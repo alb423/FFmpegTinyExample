@@ -73,7 +73,11 @@ int decode_audio(char *pFileName)
     int audioStream;
 	
 	int dst_sample_fmt = AV_SAMPLE_FMT_S16;
-	int dst_linesize, dst_nb_channels = 2, dst_nb_samples = 10240;  // should large then pFFCtx->avFrame->nb_samples
+	int dst_nb_channels = 1;
+	int dst_channel_layout = AV_CH_LAYOUT_MONO;
+	int dst_sample_rate = 16000;
+	
+	int dst_linesize, dst_nb_samples = 10240;  // should large then pFFCtx->avFrame->nb_samples
 	
 	uint8_t **ppOutputBuffer = NULL;
 
@@ -120,18 +124,27 @@ int decode_audio(char *pFileName)
 
 
     audio_decode_init(pFFCtx);
-
-    printf("pFFCtx->avCodecContext->sample_fmt = %s\n\n", av_get_sample_fmt_name(pFFCtx->avCodecContext->sample_fmt));
+	pFFCtx->avCodecContext->channel_layout = pFormatCtxIn->streams[i]->codecpar->channel_layout;
+	pFFCtx->avCodecContext->sample_rate = pFormatCtxIn->streams[i]->codecpar->sample_rate;
+	pFFCtx->avCodecContext->sample_fmt = pFormatCtxIn->streams[i]->codecpar->format;
 	
-	if(pFFCtx->avCodecContext->sample_fmt != dst_sample_fmt)
+    printf("pFFCtx->avCodecContext->sample_fmt = %s\n", av_get_sample_fmt_name(pFFCtx->avCodecContext->sample_fmt));
+    printf("pFFCtx->avCodecContext(%zu %d %d)\n", 
+			pFFCtx->avCodecContext->channel_layout, 
+			pFFCtx->avCodecContext->sample_rate, 
+			pFFCtx->avCodecContext->sample_fmt);
+
+	if( (pFFCtx->avCodecContext->channel_layout != dst_channel_layout) ||
+		(pFFCtx->avCodecContext->sample_rate != dst_sample_rate) ||
+		(pFFCtx->avCodecContext->sample_fmt != dst_sample_fmt))
 	{
 		// Set up SWR context once you've got codec information
 		swr = swr_alloc();
-		av_opt_set_int(swr, "in_channel_layout",  pFormatCtxIn->streams[i]->codecpar->channel_layout, 0);
-		av_opt_set_int(swr, "out_channel_layout", pFormatCtxIn->streams[i]->codecpar->channel_layout,  0);
-		av_opt_set_int(swr, "in_sample_rate",     pFormatCtxIn->streams[i]->codecpar->sample_rate, 0);
-		av_opt_set_int(swr, "out_sample_rate",    pFormatCtxIn->streams[i]->codecpar->sample_rate, 0);
-		av_opt_set_sample_fmt(swr, "in_sample_fmt",  AV_SAMPLE_FMT_S16P, 0);
+		av_opt_set_int(swr, "in_channel_layout",  pFFCtx->avCodecContext->channel_layout, 0);
+		av_opt_set_int(swr, "out_channel_layout", dst_channel_layout,  0);
+		av_opt_set_int(swr, "in_sample_rate",     pFFCtx->avCodecContext->sample_rate, 0);
+		av_opt_set_int(swr, "out_sample_rate",    dst_sample_rate, 0);
+		av_opt_set_sample_fmt(swr, "in_sample_fmt",  pFFCtx->avCodecContext->sample_fmt, 0);
 		av_opt_set_sample_fmt(swr, "out_sample_fmt", dst_sample_fmt,  0);
 		swr_init(swr);
 	}

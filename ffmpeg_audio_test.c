@@ -14,7 +14,7 @@ int main(int argc, char **argv)
     }
     ret = decode_audio(argv[1]);
 	if(ret == RET_SUCCESS) {
-		printf("ffplay -f s16le -ar 44100 -ac 2 ./output.pcm\n");
+		printf("RENDER CMD: ffplay -f s16le -ar 16000 -ac 1 ./output.pcm\n");
 	}
 	else {
 		printf("decode %s error\n", argv[1]);
