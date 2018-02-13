@@ -15,19 +15,18 @@
 #define RET_FAIL   		-1
 
 
-extern void avcodec_register_all(void); 
+extern void avcodec_register_all(void);
 extern int avcodec_open2 (AVCodecContext *avctx, const AVCodec *codec, AVDictionary **options);
 extern int av_image_get_buffer_size(enum AVPixelFormat pix_fmt, int width, int height, int align);
 extern AVCodecContext * avcodec_alloc_context3(const AVCodec *codec);
 extern AVFrame * av_frame_alloc(void);
 extern const char *    av_get_pix_fmt_name (enum AVPixelFormat pix_fmt);
 extern const char *    av_color_space_name (enum AVColorSpace space);
-extern int av_pix_fmt_count_planes (   enum AVPixelFormat  pix_fmt);  
+extern int av_pix_fmt_count_planes (   enum AVPixelFormat  pix_fmt);
 
 #define __TRACE__ printf("%s:%d\n", __func__, __LINE__);
 
-typedef struct tFFContext
-{
+typedef struct tFFContext {
     AVFrame         *avFrame;
     AVCodec         *avCodec;
     AVCodecContext  *avCodecContext;
