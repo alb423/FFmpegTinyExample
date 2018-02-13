@@ -5,7 +5,6 @@
 
 int video_decode_init(tFFContext *pFFCtx)
 {
-    AVFrame       *pAVFrame;
     AVCodec         *pAVCodec;
     AVCodecContext *avCodecContext;
 
@@ -22,7 +21,6 @@ int video_decode_init(tFFContext *pFFCtx)
 
     avCodecContext = avcodec_alloc_context3(pAVCodec);
 
-    pAVFrame = av_frame_alloc();
     if (pFFCtx->extradata_size > 0) {
         avCodecContext->extradata = pFFCtx->extradata;
         avCodecContext->extradata_size = (int)pFFCtx->extradata_size;
@@ -36,7 +34,7 @@ int video_decode_init(tFFContext *pFFCtx)
         return RET_FAIL;
     }
 
-    pFFCtx->avFrame = pAVFrame;
+	pFFCtx->avFrame = av_frame_alloc();
     pFFCtx->avCodec = pAVCodec;
     pFFCtx->avCodecContext = avCodecContext;
 
@@ -114,7 +112,8 @@ int decode_video(char *pFileName)
 
     pFFCtx->extradata = pFormatCtxIn->streams[i]->codecpar->extradata;
     pFFCtx->extradata_size = pFormatCtxIn->streams[i]->codecpar->extradata_size;
-    pFFCtx->codec_id = AV_CODEC_ID_H264;
+    //pFFCtx->codec_id = AV_CODEC_ID_H264;
+	pFFCtx->codec_id = pFormatCtxIn->streams[i]->codecpar->codec_id;
     /* End of input prepare */
 
 

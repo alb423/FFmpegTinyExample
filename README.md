@@ -24,7 +24,6 @@ Demo program to use FFmpeg library.
 	--arch=x86 \
 	--disable-x86asm \
 	--target-os=linux \
-	--enable-neon \
 	--disable-static \
 	--enable-shared \
 	--disable-debug \
@@ -59,6 +58,7 @@ Demo program to use FFmpeg library.
 ## How to download test sample
 * http://www.sample-videos.com/download-sample-audio.php
 * http://www.sample-videos.com/index.php#sample-mp4-video
+* https://keepvid.com/sites/download-youtube-video.html
 
 ## Usage
 * make clean;make
@@ -73,7 +73,7 @@ Demo program to use FFmpeg library.
 	--target-os=linux \
 	--cross-prefix=arm-linux-gnueabihf- \
 	--enable-neon \
-	--extra-cflags='-mfpu=neon -mfloat-abi=hard -mcpu=cortex-a7 -std=c99 -fomit-frame-pointer -O3 -fno-math-errno -fno-signed-zeros -fno-tree-vectorize' \
+	--extra-cflags='-mfpu=neon -mfloat-abi=hard -mtune=cortex-a7 -std=c99 -fomit-frame-pointer -O3 -fno-math-errno -fno-signed-zeros -fno-tree-vectorize' \
 	--disable-static \
 	--enable-shared \
 	--disable-debug \
@@ -104,7 +104,8 @@ Demo program to use FFmpeg library.
 	--enable-decoder=mp3 \
     --enable-small
 	
+	
 Reference:
-https://www.ffmpeg.org/doxygen/2.1/doc_2examples_2decoding_encoding_8c-example.html
-https://github.com/alb423/FFmpegAudioPlayer/blob/master/FFmpegAudioPlayer/AudioPlayer.m
-https://stackedit.io/app
+* [ffmpeg decode example](https://www.ffmpeg.org/doxygen/2.1/doc_2examples_2decoding_encoding_8c-example.html)
+* [ffmpeg new api usage](https://github.com/alb423/FFmpegAudioPlayer/blob/master/FFmpegAudioPlayer/AudioPlayer.m)
+* [README.md preview](https://stackedit.io/app)

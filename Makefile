@@ -14,7 +14,7 @@ CFLAGS += -Wall
 CFLAGS += -std=c99
 CFLAGS += -g
 
-LDFLAGS += -lavcodec -lavformat -lavutil -lswresample -lm
+LDFLAGS += -lavcodec -lavformat -lavutil -lswresample -lm -lpthread
 
 
 all: audio_test video_test

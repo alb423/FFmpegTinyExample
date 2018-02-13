@@ -3,43 +3,93 @@
 #include <stdint.h>
 #include "ffmpeg_decode.h"
 
-int audio_decode_init(tFFContext *pFFCtx)
+#define DST_SAMPLE_FMT       AV_SAMPLE_FMT_S16
+#define DST_SAMPLE_RATE      16000
+#define DST_CHANNEL          1
+#define DST_CHANNEL_LAYOUT   AV_CH_LAYOUT_MONO
+
+int audio_decode_init(tFFContext *pFFCtx, char *pFileName, int *pAudioStreamId)
 {
-    AVFrame       *pAVFrame;
-    AVCodec         *pAVCodec;
+    int i;
+    AVCodec        *pAVCodec;
     AVCodecContext *avCodecContext;
+    SwrContext     *swr;
+    AVFormatContext *pFormatCtxIn;
 
     avcodec_register_all();
     av_register_all();
 
-    pAVCodec = avcodec_find_decoder(pFFCtx->codec_id);
+    do {
+        pFormatCtxIn = avformat_alloc_context();
+        if (avformat_open_input(&pFormatCtxIn, pFileName, NULL, NULL) != 0) {
+            perror("fopen failed in main");
+            break;
+        }
+        avformat_find_stream_info(pFormatCtxIn, NULL);
+        av_dump_format(pFormatCtxIn, 0, pFileName, 0);
 
-    if (pAVCodec == NULL) {
-        printf("Codec not found\n");
-        return RET_FAIL;
-    }
+        for (i = 0; i < pFormatCtxIn->nb_streams; i++) {
+            if (pFormatCtxIn->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+                *pAudioStreamId = i;
+                printf("audioStream=%d\n", *pAudioStreamId);
+                break;
+            }
+        }
 
-    avCodecContext = avcodec_alloc_context3(pAVCodec);
+        pFFCtx->codec_id = pFormatCtxIn->streams[i]->codecpar->codec_id;
 
-    pAVFrame = av_frame_alloc();
-    if (pFFCtx->extradata_size > 0) {
-        avCodecContext->extradata = pFFCtx->extradata;
-        avCodecContext->extradata_size = (int)pFFCtx->extradata_size;
-    } else {
+        pAVCodec = avcodec_find_decoder(pFFCtx->codec_id);
+        if (pAVCodec == NULL) {
+            printf("Codec not found\n");
+            break;
+        }
+
+        avCodecContext = avcodec_alloc_context3(pAVCodec);
+
+        pFFCtx->avFrame = av_frame_alloc();
+        if (pFFCtx->extradata_size > 0) {
+            avCodecContext->extradata = pFFCtx->extradata;
+            avCodecContext->extradata_size = (int)pFFCtx->extradata_size;
+        } else {
+            avCodecContext->flags |= CODEC_FLAG_TRUNCATED;
+        }
         avCodecContext->flags |= CODEC_FLAG_TRUNCATED;
+
+        if (avcodec_open2(avCodecContext, pAVCodec, NULL) < 0) {
+            printf("Could not open codec(%s)\n", avcodec_get_name(pFFCtx->codec_id));
+            break;
+        }
+
+        avCodecContext->channel_layout = pFormatCtxIn->streams[i]->codecpar->channel_layout;
+        avCodecContext->sample_rate    = pFormatCtxIn->streams[i]->codecpar->sample_rate;
+        avCodecContext->sample_fmt     = pFormatCtxIn->streams[i]->codecpar->format;
+
+        if ( (avCodecContext->channel_layout != DST_CHANNEL_LAYOUT) ||
+             (avCodecContext->sample_rate != DST_SAMPLE_RATE) ||
+             (avCodecContext->sample_fmt != DST_SAMPLE_FMT)) {
+            swr = swr_alloc();
+            av_opt_set_int(swr, "in_channel_layout",  avCodecContext->channel_layout, 0);
+            av_opt_set_int(swr, "out_channel_layout", DST_CHANNEL_LAYOUT,  0);
+            av_opt_set_int(swr, "in_sample_rate",     avCodecContext->sample_rate, 0);
+            av_opt_set_int(swr, "out_sample_rate",    DST_SAMPLE_RATE, 0);
+            av_opt_set_sample_fmt(swr, "in_sample_fmt",  avCodecContext->sample_fmt, 0);
+            av_opt_set_sample_fmt(swr, "out_sample_fmt", DST_SAMPLE_FMT,  0);
+            swr_init(swr);
+        }
+
+        pFFCtx->avCodec = pAVCodec;
+        pFFCtx->avCodecContext = avCodecContext;
+        pFFCtx->pFormatCtxIn = pFormatCtxIn;
+        pFFCtx->swr = swr;
+
+        return RET_SUCCESS;
+    } while (0);
+
+    if (pFormatCtxIn) {
+        avformat_close_input(&pFormatCtxIn);
+        avformat_free_context(pFormatCtxIn);
     }
-    avCodecContext->flags |= CODEC_FLAG_TRUNCATED;
-
-    if (avcodec_open2(avCodecContext, pAVCodec, NULL) < 0) {
-        printf("Could not open codec\n");
-        return RET_FAIL;
-    }
-
-    pFFCtx->avFrame = pAVFrame;
-    pFFCtx->avCodec = pAVCodec;
-    pFFCtx->avCodecContext = avCodecContext;
-
-    return RET_SUCCESS;
+    return RET_FAIL;
 }
 
 
@@ -62,30 +112,20 @@ int audio_decode_deinit(tFFContext *pFFCtx)
 
 int decode_audio(char *pFileName)
 {
-    int i, vRet = 0, bytes_num = 0;
+    int vRet = 0, bytes_num = 0;
     FILE *pFileOut;
     size_t totalBytesRead = 0, totalBytesWrite = 0;
+    int dst_linesize, max_dst_nb_samples, dst_nb_samples;  // should large then pFFCtx->avFrame->nb_samples
 
-    // For file input
-    SwrContext *swr;
-    AVFormatContext *pFormatCtxIn;
     AVPacket avPacketIn;
-    int audioStream;
-
-    int dst_sample_fmt = AV_SAMPLE_FMT_S16;
-    int dst_nb_channels = 1;
-    int dst_channel_layout = AV_CH_LAYOUT_MONO;
-    int dst_sample_rate = 16000;
-
-    int dst_linesize, dst_nb_samples = 10240;  // should large then pFFCtx->avFrame->nb_samples
+    int audioStream = -1;
 
     uint8_t **ppOutputBuffer = NULL;
 
-    // For file output
     tFFContext *pFFCtx = NULL;
 
     if (!pFileName) {
-        perror("malloc fail..");
+        perror("unknow decode file");
         return RET_FAIL;
     }
 
@@ -95,58 +135,9 @@ int decode_audio(char *pFileName)
         return RET_FAIL;
     }
 
-    /* Prepare input file, user should replace this section to network buffers */
-    avcodec_register_all();
-    av_register_all();
+    audio_decode_init(pFFCtx, pFileName, &audioStream);
     av_init_packet(&avPacketIn);
 
-    pFormatCtxIn = avformat_alloc_context();
-
-    if (avformat_open_input(&pFormatCtxIn, pFileName, NULL, NULL) != 0) {
-        perror("fopen failed in main");
-        goto error1;
-    }
-    avformat_find_stream_info(pFormatCtxIn, NULL);
-    av_dump_format(pFormatCtxIn, 0, pFileName, 0);
-
-    for (i = 0; i < pFormatCtxIn->nb_streams; i++) {
-        if (pFormatCtxIn->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-            audioStream = i;
-            printf("audioStream=%d\n", audioStream);
-            break;
-        }
-    }
-
-    pFFCtx->codec_id = AV_CODEC_ID_MP3;
-    /* End of input prepare */
-
-
-    audio_decode_init(pFFCtx);
-    pFFCtx->avCodecContext->channel_layout = pFormatCtxIn->streams[i]->codecpar->channel_layout;
-    pFFCtx->avCodecContext->sample_rate = pFormatCtxIn->streams[i]->codecpar->sample_rate;
-    pFFCtx->avCodecContext->sample_fmt = pFormatCtxIn->streams[i]->codecpar->format;
-
-    printf("pFFCtx->avCodecContext->sample_fmt = %s\n", av_get_sample_fmt_name(pFFCtx->avCodecContext->sample_fmt));
-    printf("pFFCtx->avCodecContext(%zu %d %d)\n",
-           pFFCtx->avCodecContext->channel_layout,
-           pFFCtx->avCodecContext->sample_rate,
-           pFFCtx->avCodecContext->sample_fmt);
-
-    if ( (pFFCtx->avCodecContext->channel_layout != dst_channel_layout) ||
-         (pFFCtx->avCodecContext->sample_rate != dst_sample_rate) ||
-         (pFFCtx->avCodecContext->sample_fmt != dst_sample_fmt)) {
-        // Set up SWR context once you've got codec information
-        swr = swr_alloc();
-        av_opt_set_int(swr, "in_channel_layout",  pFFCtx->avCodecContext->channel_layout, 0);
-        av_opt_set_int(swr, "out_channel_layout", dst_channel_layout,  0);
-        av_opt_set_int(swr, "in_sample_rate",     pFFCtx->avCodecContext->sample_rate, 0);
-        av_opt_set_int(swr, "out_sample_rate",    dst_sample_rate, 0);
-        av_opt_set_sample_fmt(swr, "in_sample_fmt",  pFFCtx->avCodecContext->sample_fmt, 0);
-        av_opt_set_sample_fmt(swr, "out_sample_fmt", dst_sample_fmt,  0);
-        swr_init(swr);
-    }
-
-    /* Prepare output file */
     pFileOut = fopen("./output.pcm", "wb");
     if (NULL == pFileOut) {
         perror("fopen failed in main");
@@ -154,46 +145,51 @@ int decode_audio(char *pFileName)
         goto error2;
     }
 
-    /* Decode data */
+    max_dst_nb_samples = dst_nb_samples =
+                             av_rescale_rnd(1024, DST_SAMPLE_RATE, pFFCtx->avCodecContext->sample_rate, AV_ROUND_UP);
+    vRet = av_samples_alloc_array_and_samples(&ppOutputBuffer, &dst_linesize, DST_CHANNEL, dst_nb_samples, DST_SAMPLE_FMT, 0);
+    if (vRet < 0) {
+        printf("av_samples_alloc_array_and_samples() error!!\n");
+        goto error2;
+    }
 
-    while (av_read_frame(pFormatCtxIn, &avPacketIn) >= 0) {
+    /* Decode data */
+    while (av_read_frame(pFFCtx->pFormatCtxIn, &avPacketIn) >= 0) {
         if (avPacketIn.stream_index == audioStream) {
             totalBytesRead += avPacketIn.size;
-            //printf("avPacketIn.size=%d\n", avPacketIn.size);
-
             avcodec_send_packet(pFFCtx->avCodecContext, &avPacketIn);
             do {
                 vRet = avcodec_receive_frame(pFFCtx->avCodecContext, pFFCtx->avFrame);
             } while (vRet == EAGAIN);
 
             if (vRet < 0) {
-                /* if error, skip frame */
+				printf("avcodec_receive_frame() error !! %s \n", av_err2str(vRet));
                 break;
             } else {
-
-                if (!ppOutputBuffer) {
-                    vRet = av_samples_alloc_array_and_samples(&ppOutputBuffer, &dst_linesize, dst_nb_channels, dst_nb_samples, dst_sample_fmt, 0);
+                dst_nb_samples = av_rescale_rnd(swr_get_delay(pFFCtx->swr, pFFCtx->avCodecContext->sample_rate) + pFFCtx->avFrame->nb_samples,
+                                                DST_SAMPLE_RATE,
+                                                pFFCtx->avCodecContext->sample_rate,
+                                                AV_ROUND_UP);
+                if (dst_nb_samples > max_dst_nb_samples) {
+                    av_freep(&ppOutputBuffer[0]);
+                    vRet = av_samples_alloc(ppOutputBuffer, &dst_linesize, DST_CHANNEL,
+                                            dst_nb_samples, DST_SAMPLE_FMT, 1);
                     if (vRet < 0) {
-                        printf("av_samples_alloc_array_and_samples() error!!\n");
+						printf("av_samples_alloc() error !!\n");
                         break;
-                    }
+					}
+                    max_dst_nb_samples = dst_nb_samples;
                 }
-                /*
-                	AV_SAMPLE_FMT_S16
-                		c1 c1 c2 c2 c1 c1 c2 c2...
-                	AV_SAMPLE_FMT_S16P
-                		c1 c1 c1 c1 .... c2 c2 c2 c2 ..
-                */
-                if (pFFCtx->avCodecContext->sample_fmt != dst_sample_fmt) {
-                    vRet = swr_convert(swr,
+
+
+                if (pFFCtx->avCodecContext->sample_fmt != DST_SAMPLE_FMT) {
+                    vRet = swr_convert(pFFCtx->swr,
                                        ppOutputBuffer,
                                        pFFCtx->avFrame->nb_samples,
                                        (const uint8_t **)pFFCtx->avFrame->data,
                                        pFFCtx->avFrame->nb_samples);
-
-                    bytes_num = av_samples_get_buffer_size(NULL, dst_nb_channels, vRet, dst_sample_fmt, 1);
+                    bytes_num = av_samples_get_buffer_size(NULL, DST_CHANNEL, vRet, DST_SAMPLE_FMT, 1);
                     vRet = fwrite(ppOutputBuffer[0], 1, bytes_num, pFileOut);
-                    totalBytesWrite += vRet;
                     if (vRet < bytes_num) {
                         printf("write file error %d!=%d\n", bytes_num, vRet);
                         break;
@@ -210,23 +206,22 @@ int decode_audio(char *pFileName)
                         break;
                     }
                 }
+                totalBytesWrite += vRet;
             }
-            pFFCtx->frameCount++;
-        } else {
-            printf("unexpected data\n");
         }
     }
 
-    printf("totalBytesRead=%zu totalBytesWrite=%zu frameCount=%d\n", totalBytesRead, totalBytesWrite, pFFCtx->frameCount);
-
-    audio_decode_deinit(pFFCtx);
+    printf("totalBytesRead=%zu totalBytesWrite=%zu\n", totalBytesRead, totalBytesWrite);
 
     /*Free and close everything*/
     fclose(pFileOut);
+    if (ppOutputBuffer)
+        av_freep(&ppOutputBuffer[0]);
+    av_freep(&ppOutputBuffer);
 
 error2:
-    avformat_close_input(&pFormatCtxIn);
-error1:
+    audio_decode_deinit(pFFCtx);
+    avformat_close_input(&pFFCtx->pFormatCtxIn);
     free(pFFCtx);
     return RET_SUCCESS;
 }

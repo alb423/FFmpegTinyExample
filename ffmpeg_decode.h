@@ -30,6 +30,8 @@ typedef struct tFFContext {
     AVFrame         *avFrame;
     AVCodec         *avCodec;
     AVCodecContext  *avCodecContext;
+    AVFormatContext *pFormatCtxIn;
+    SwrContext      *swr;
     int             frameCount;
     int             codec_id;
     int             extradata_size;
