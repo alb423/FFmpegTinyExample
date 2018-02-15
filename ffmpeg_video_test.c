@@ -8,7 +8,7 @@ int main(int argc, char **argv)
 {
     int ret = RET_SUCCESS;
     if ( argc != 2 ) {
-        fprintf( stderr, "Usage: %s SampleVideo_1280x720_1mb.mp4\n", argv[0] );
+        fprintf( stderr, "Usage: %s SampleVideo.mp4\n", argv[0] );
     }
 
     decode_video(argv[1]);

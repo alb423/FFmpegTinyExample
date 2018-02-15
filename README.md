@@ -55,10 +55,12 @@ Demo program to use FFmpeg library.
 * make clean;make
 * make install DESTDIR=~/test/x86_ffmpeg
 
-## How to download test sample
-* http://www.sample-videos.com/download-sample-audio.php
-* http://www.sample-videos.com/index.php#sample-mp4-video
+## How to get test sample
+* https://allthingsaudio.wikispaces.com/Sample+Music
+* http://techslides.com/sample-webm-ogg-and-mp4-video-files-for-html5
+* http://techslides.com/sample-files-for-development
 * https://keepvid.com/sites/download-youtube-video.html
+* https://linuxconfig.org/ffmpeg-audio-format-conversions
 
 ## Usage
 * make clean;make
