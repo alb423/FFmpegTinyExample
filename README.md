@@ -16,7 +16,30 @@ Demo program to use FFmpeg library.
 1. Decode mp3 file (audio only)
 2. Decode mp4 file (video only)
 
-## How to configure ffmpeg library with only mp3 and h264 codec
+## How to configure ffmpeg library 
+* ./configure \
+    --arch=x86 \
+	--disable-x86asm \
+	--target-os=linux \
+	--enable-shared \
+	--disable-static
+* make clean;make
+* make install DESTDIR=~/test/x86_ffmpeg_full
+
+## How to get test sample
+* https://allthingsaudio.wikispaces.com/Sample+Music
+* http://techslides.com/sample-webm-ogg-and-mp4-video-files-for-html5
+* http://techslides.com/sample-files-for-development
+* https://keepvid.com/sites/download-youtube-video.html
+* https://linuxconfig.org/ffmpeg-audio-format-conversions
+
+## Usage
+* make clean;make
+* export LD_LIBRARY_PATH=~/test/x86_ffmpeg/usr/local/lib
+* ./audio_test ./SampleAudio_0.4mb.mp3 
+* ./vidoe_test ./SampleVideo_1280x720_1mb.mp4
+
+## How to configure ffmpeg library with only mp3 codec
 * wget http://ffmpeg.org/releases/ffmpeg-3.4.1.tar.bz2
 * tar xvf ffmpeg-3.4.1.tar.bz2
 * cd ffmpeg-3.4.1
@@ -39,7 +62,6 @@ Demo program to use FFmpeg library.
 	--disable-demuxers \
 	--enable-rdft \
 	--enable-demuxer=mp3 \
-	--enable-demuxer=h264 \
 	--disable-bsfs \
 	--disable-filters \
 	--disable-parsers \
@@ -50,25 +72,9 @@ Demo program to use FFmpeg library.
 	--disable-outdevs \
 	--disable-encoders \
 	--disable-decoders \
-	--enable-decoder=mp3 \
-	--enable-decoder=h264
-* make clean;make
-* make install DESTDIR=~/test/x86_ffmpeg
-
-## How to get test sample
-* https://allthingsaudio.wikispaces.com/Sample+Music
-* http://techslides.com/sample-webm-ogg-and-mp4-video-files-for-html5
-* http://techslides.com/sample-files-for-development
-* https://keepvid.com/sites/download-youtube-video.html
-* https://linuxconfig.org/ffmpeg-audio-format-conversions
-
-## Usage
-* make clean;make
-* export LD_LIBRARY_PATH=~/test/x86_ffmpeg/usr/local/lib
-* ./audio_test ./SampleAudio_0.4mb.mp3 
-* ./vidoe_test ./SampleVideo_1280x720_1mb.mp4
-
-## FFMpeg configuration for embedded arm linux
+	--enable-decoder=mp3
+	
+## FFMpeg configuration with only mp3 codec for embedded arm linux
 * ./configure \
 	--enable-cross-compile \
 	--arch=armv7-a \
@@ -90,7 +96,6 @@ Demo program to use FFmpeg library.
 	--disable-muxers \
 	--disable-demuxers \
 	--enable-rdft \
-	--enable-demuxer=h264 \
 	--enable-demuxer=mp3 \
 	--disable-bsfs \
 	--disable-filters \
@@ -102,10 +107,8 @@ Demo program to use FFmpeg library.
 	--disable-outdevs \
 	--disable-encoders \
 	--disable-decoders \
-	--enable-decoder=h264 \
 	--enable-decoder=mp3 \
     --enable-small
-	
 	
 Reference:
 * [ffmpeg decode example](https://www.ffmpeg.org/doxygen/2.1/doc_2examples_2decoding_encoding_8c-example.html)

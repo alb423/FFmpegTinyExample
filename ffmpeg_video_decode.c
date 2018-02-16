@@ -3,42 +3,77 @@
 #include <stdint.h>
 #include "ffmpeg_decode.h"
 
-int video_decode_init(tFFContext *pFFCtx)
+int video_decode_init(tFFContext *pFFCtx, char *pFileName, int *pVideoStreamId)
 {
-    AVCodec         *pAVCodec;
+    int i, vRet = 0;
+    AVCodec        *pAVCodec;
     AVCodecContext *avCodecContext;
+    AVFormatContext *pFormatCtxIn;
 
     avcodec_register_all();
     av_register_all();
 
+    do {
+        pFormatCtxIn = avformat_alloc_context();
+        if ((vRet = avformat_open_input(&pFormatCtxIn, pFileName, NULL, NULL)) != 0) {
+            fprintf(stderr, "avformat_open_input fail (%s)\n", av_err2str(vRet));
+            break;
+        }
+        avformat_find_stream_info(pFormatCtxIn, NULL);
+        av_dump_format(pFormatCtxIn, 0, pFileName, 0);
 
-    pAVCodec = avcodec_find_decoder(pFFCtx->codec_id); //AV_CODEC_ID_H264
+        for (i = 0; i < pFormatCtxIn->nb_streams; i++) {
+            if (pFormatCtxIn->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+                *pVideoStreamId = i;
+                printf("VideoStreamId=%d\n", *pVideoStreamId);
+                break;
+            }
+        }
 
-    if (pAVCodec == NULL) {
-        printf("Codec not found\n");
-        return RET_FAIL;
-    }
+        pFFCtx->codec_id = pFormatCtxIn->streams[i]->codecpar->codec_id;
 
-    avCodecContext = avcodec_alloc_context3(pAVCodec);
+        pAVCodec = avcodec_find_decoder(pFFCtx->codec_id);
+        if (pAVCodec == NULL) {
+            printf("Codec not found\n");
+            break;
+        }
 
-    if (pFFCtx->extradata_size > 0) {
-        avCodecContext->extradata = pFFCtx->extradata;
-        avCodecContext->extradata_size = (int)pFFCtx->extradata_size;
-    } else {
+        avCodecContext = avcodec_alloc_context3(pAVCodec);
+
+        pFFCtx->avFrame = av_frame_alloc();
+
+        if (pFFCtx->extradata_size > 0) {
+            avCodecContext->extradata = pFFCtx->extradata;
+            avCodecContext->extradata_size = (int)pFFCtx->extradata_size;
+        } else {
+            avCodecContext->flags |= CODEC_FLAG_TRUNCATED;
+        }
         avCodecContext->flags |= CODEC_FLAG_TRUNCATED;
+
+        vRet = avcodec_parameters_to_context(avCodecContext, pFormatCtxIn->streams[0]->codecpar);
+        if (vRet < 0) {
+            avformat_close_input(&pFormatCtxIn);
+            avcodec_free_context(&avCodecContext);
+            break;
+        }
+
+        if (avcodec_open2(avCodecContext, pAVCodec, NULL) < 0) {
+            printf("Could not open codec(%s)\n", avcodec_get_name(pFFCtx->codec_id));
+            break;
+        }
+
+        pFFCtx->avCodec = pAVCodec;
+        pFFCtx->avCodecContext = avCodecContext;
+        pFFCtx->pFormatCtxIn = pFormatCtxIn;
+
+        return RET_SUCCESS;
+    } while (0);
+
+    if (pFormatCtxIn) {
+        avformat_close_input(&pFormatCtxIn);
+        avformat_free_context(pFormatCtxIn);
     }
-    avCodecContext->flags |= CODEC_FLAG_TRUNCATED;
-
-    if (avcodec_open2(avCodecContext, pAVCodec, NULL) < 0) {
-        printf("Could not open codec\n");
-        return RET_FAIL;
-    }
-
-	pFFCtx->avFrame = av_frame_alloc();
-    pFFCtx->avCodec = pAVCodec;
-    pFFCtx->avCodecContext = avCodecContext;
-
-    return RET_SUCCESS;
+    return RET_FAIL;
 }
 
 
@@ -58,19 +93,16 @@ int video_decode_deinit(tFFContext *pFFCtx)
     return RET_SUCCESS;
 }
 
-
-int decode_video(char *pFileName)
+int decode_video(char *pFileName, enum AVPixelFormat *pPixFmt, int *pWidth, int *pHeight)
 {
-    int i, vRet = 0;
+    int vRet = 0;
     FILE *pFileOut;
     size_t totalBytesRead = 0, bytesWrite = 0, totalBytesWrite = 0;
 
-    // For file input
     AVFormatContext *pFormatCtxIn;
     AVPacket avPacketIn;
     int videoStream;
 
-    // For file output
     tFFContext *pFFCtx = NULL;
 
     if (!pFileName) {
@@ -84,41 +116,15 @@ int decode_video(char *pFileName)
         return RET_FAIL;
     }
 
-
-    /* Prepare input file, user should replace this section to network buffers */
     avcodec_register_all();
     av_register_all();
+
+    video_decode_init(pFFCtx, pFileName, &videoStream);
+    *pWidth = pFFCtx->avCodecContext->coded_width;
+    *pHeight = pFFCtx->avCodecContext->coded_height;
+    *pPixFmt = pFFCtx->avCodecContext->pix_fmt;
+
     av_init_packet(&avPacketIn);
-
-    pFormatCtxIn = avformat_alloc_context();
-
-    // http://www.live555.com/liveMedia/public/264/test.264
-    // if(avformat_open_input(&pFormatCtxIn, "./test.264", NULL, NULL) != 0) {
-    if (avformat_open_input(&pFormatCtxIn, pFileName, NULL, NULL) != 0) {
-        perror("fopen failed in main");
-        goto error1;
-    }
-    avformat_find_stream_info(pFormatCtxIn, NULL);
-    av_dump_format(pFormatCtxIn, 0, pFileName, 0);
-    printf("pFormatCtxIn->nb_streams = %d\n", pFormatCtxIn->nb_streams);
-
-    for (i = 0; i < pFormatCtxIn->nb_streams; i++) {
-        if (pFormatCtxIn->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-            videoStream = i;
-            printf("videoStream=%d\n", videoStream);
-            break;
-        }
-    }
-
-    pFFCtx->extradata = pFormatCtxIn->streams[i]->codecpar->extradata;
-    pFFCtx->extradata_size = pFormatCtxIn->streams[i]->codecpar->extradata_size;
-    //pFFCtx->codec_id = AV_CODEC_ID_H264;
-	pFFCtx->codec_id = pFormatCtxIn->streams[i]->codecpar->codec_id;
-    /* End of input prepare */
-
-
-    video_decode_init(pFFCtx);
-
 
     /* Prepare output file */
     pFileOut = fopen("./output.yuv", "wb");
@@ -129,18 +135,18 @@ int decode_video(char *pFileName)
     }
 
     /* Decode data */
-    while (av_read_frame(pFormatCtxIn, &avPacketIn) >= 0) {
+    while (av_read_frame(pFFCtx->pFormatCtxIn, &avPacketIn) >= 0) {
         if (avPacketIn.stream_index == videoStream) {
             totalBytesRead += avPacketIn.size;
-            printf("avPacketIn.size=%d\n", avPacketIn.size);
+            vRet = avcodec_send_packet(pFFCtx->avCodecContext, &avPacketIn);
+            if (vRet < 0 || vRet == AVERROR(EAGAIN) || vRet == AVERROR_EOF) {
+                printf("avcodec_send_packet() error(%d) !! %s \n", AVERROR(vRet), av_err2str(vRet));
+                break;
+            }
 
-            avcodec_send_packet(pFFCtx->avCodecContext, &avPacketIn);
-            do {
-                vRet = avcodec_receive_frame(pFFCtx->avCodecContext, pFFCtx->avFrame);
-            } while (vRet == EAGAIN);
-
-            if (vRet < 0) {
-                /* if error, skip frame */
+            vRet = avcodec_receive_frame(pFFCtx->avCodecContext, pFFCtx->avFrame);
+            if (vRet < 0 || vRet == AVERROR(EAGAIN) || vRet == AVERROR_EOF) {
+                printf("avcodec_receive_frame() error(%d) !! %s \n\n", AVERROR(vRet), av_err2str(vRet));
                 break;
             } else {
                 // https://fossies.org/linux/ffmpeg/doc/examples/decoding_encoding.c
@@ -149,8 +155,6 @@ int decode_video(char *pFileName)
 
                 switch (pFFCtx->avFrame->format) {
                 case AV_PIX_FMT_YUV420P:
-
-                    // Test pFFCtx->avFrame->linesize[0]
                     // Y
                     vRet = fwrite(pFFCtx->avFrame->data[0], 1, pFFCtx->avFrame->height * pFFCtx->avFrame->linesize[0], pFileOut);
                     bytesWrite = vRet;
@@ -195,16 +199,13 @@ int decode_video(char *pFileName)
     }
     printf("totalBytesRead=%zu totalBytesWrite=%zu frameCount=%d\n", totalBytesRead, totalBytesWrite, pFFCtx->frameCount);
 
-
     video_decode_deinit(pFFCtx);
-
 
     /*Free and close everything*/
     fclose(pFileOut);
 
 error2:
     avformat_close_input(&pFormatCtxIn);
-error1:
     free(pFFCtx);
     return RET_SUCCESS;
 }
