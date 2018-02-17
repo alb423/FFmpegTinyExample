@@ -6,7 +6,7 @@
 
 #define DST_SAMPLE_FMT       AV_SAMPLE_FMT_S16
 // To support tinyalsa
-#if 1
+#if RENDER_BY_TINYALSA==1
 #define DST_SAMPLE_RATE      48000
 #define DST_CHANNEL          2
 #define DST_CHANNEL_LAYOUT   AV_CH_LAYOUT_STEREO
