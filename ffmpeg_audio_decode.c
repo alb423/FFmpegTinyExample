@@ -1,12 +1,35 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <unistd.h>
 #include "ffmpeg_decode.h"
 
 #define DST_SAMPLE_FMT       AV_SAMPLE_FMT_S16
+// To support tinyalsa
+#if 1
+#define DST_SAMPLE_RATE      48000
+#define DST_CHANNEL          2
+#define DST_CHANNEL_LAYOUT   AV_CH_LAYOUT_STEREO
+#else
 #define DST_SAMPLE_RATE      16000
 #define DST_CHANNEL          1
 #define DST_CHANNEL_LAYOUT   AV_CH_LAYOUT_MONO
+#endif
+
+#if RENDER_BY_TINYALSA==1
+#include <tinyalsa/asoundlib.h>
+struct Cmd {
+    unsigned int card;
+    unsigned int device;
+    int flags;
+    struct pcm_config config;
+    unsigned int bits;
+};
+struct Ctx {
+    struct pcm *pcm;
+};
+struct Ctx *pTinyCtx;
+#endif
 
 int audio_decode_init(tFFContext *pFFCtx, char *pFileName, int *pAudioStreamId)
 {
@@ -146,6 +169,33 @@ int decode_audio(char *pFileName, enum AVSampleFormat *pSampleFmt, int *pSampleR
 
     av_init_packet(&avPacketIn);
 
+#if RENDER_BY_TINYALSA==1
+    struct Cmd vxCmd = {0};
+    pTinyCtx = (struct Ctx *)malloc(sizeof(struct Ctx));
+    vxCmd.card = 0;
+    vxCmd.device = 0;
+    vxCmd.flags = PCM_OUT;
+    vxCmd.config.period_size = 1024; //1024
+    vxCmd.config.period_count = 2;
+    vxCmd.config.channels = DST_CHANNEL; //2,
+    vxCmd.config.rate = DST_SAMPLE_RATE; //48000,
+    vxCmd.config.format = PCM_FORMAT_S16_LE;
+    vxCmd.config.silence_threshold = 1024 * 2;
+    vxCmd.config.stop_threshold = 1024 * 2;
+    vxCmd.config.start_threshold = 1024;
+    vxCmd.bits = 16;
+
+    pTinyCtx->pcm = pcm_open(vxCmd.card, vxCmd.device, vxCmd.flags, &vxCmd.config);
+    if (pTinyCtx->pcm == NULL) {
+        fprintf(stderr, "failed to allocate memory for pcm\n");
+        goto error2;
+    } else if (!pcm_is_ready(pTinyCtx->pcm)) {
+        fprintf(stderr, "failed to open pcm(%p) %u,%u\n", pTinyCtx->pcm, vxCmd.card, vxCmd.device);
+        goto error2;
+    }
+    printf("pTinyCtx=%p, pTinyCtx->pcm=%p\n", pTinyCtx, pTinyCtx->pcm);
+#endif
+
     pFileOut = fopen("./output.pcm", "wb");
     if (NULL == pFileOut) {
         printf("fopen failed \n");
@@ -158,6 +208,7 @@ int decode_audio(char *pFileName, enum AVSampleFormat *pSampleFmt, int *pSampleR
     vRet = av_samples_alloc_array_and_samples(&ppOutputBuffer, &dst_linesize, DST_CHANNEL, dst_nb_samples, DST_SAMPLE_FMT, 0);
     if (vRet < 0) {
         printf("av_samples_alloc_array_and_samples() error!!\n");
+        vRet = RET_FAIL;
         goto error2;
     }
 
@@ -216,8 +267,18 @@ int decode_audio(char *pFileName, enum AVSampleFormat *pSampleFmt, int *pSampleR
                         break;
                     }
                 }
-                if (vRet > 0)
+
+
+                if (vRet > 0) {
+#if RENDER_BY_TINYALSA==1
+                    if (pcm_writei(pTinyCtx->pcm, ppOutputBuffer[0], bytes_num) < 0) {
+                        fprintf(stderr, "error playing sample\n");
+                    }
+                    // DST_SAMPLE_RATE / 1000 / channels / bytesPerSample = 48000/(1024*2**2) = 11.719
+                    usleep(11719);
+#endif
                     totalBytesWrite += bytes_num;
+                }
             }
         }
     }
@@ -271,8 +332,21 @@ int decode_audio(char *pFileName, enum AVSampleFormat *pSampleFmt, int *pSampleR
     av_freep(&ppOutputBuffer);
 
 error2:
+#if RENDER_BY_TINYALSA==1
+    if (pTinyCtx == NULL) {
+        return RET_SUCCESS;
+    }
+    if (pTinyCtx->pcm != NULL) {
+        pcm_close(pTinyCtx->pcm);
+    }
+    free(pTinyCtx);
+#endif
+
     audio_decode_deinit(pFFCtx);
     avformat_close_input(&pFFCtx->pFormatCtxIn);
     free(pFFCtx);
-    return RET_SUCCESS;
+    if (vRet == RET_FAIL)
+        return RET_FAIL;
+    else
+        return RET_SUCCESS;
 }

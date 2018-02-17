@@ -1,5 +1,7 @@
-#CROSS_COMPILE = arm-linux-gnueabihf-
 HOME = /home/albert
+
+# unmark below line to enable render by tinyalsa
+#RENDER_BY_TINYALSA = 1
 
 CROSS_COMPILE = 
 CC = $(CROSS_COMPILE)gcc
@@ -15,6 +17,12 @@ CFLAGS += -std=c99
 CFLAGS += -g
 
 LDFLAGS += -lavcodec -lavformat -lavutil -lswresample -lm -lpthread
+
+ifeq ($(RENDER_BY_TINYALSA), 1)
+CFLAGS  += -DRENDER_BY_TINYALSA=1
+LDFLAGS += -ltinyalsa
+endif
+
 
 
 all: audio_test video_test
