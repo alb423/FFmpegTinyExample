@@ -13,7 +13,6 @@ CFLAGS = -I$(HOME)/test/x86_ffmpeg/usr/local/include/ -L$(HOME)/test/x86_ffmpeg/
 endif
 
 CFLAGS += -Wall
-CFLAGS += -std=c99
 CFLAGS += -g
 
 LDFLAGS += -lavcodec -lavformat -lavutil -lswresample -lm -lpthread
@@ -27,8 +26,8 @@ endif
 
 all: audio_test video_test
 
-audio_test: ffmpeg_audio_decode.c ffmpeg_audio_test.c
-	$(CC) $(CFLAGS) ffmpeg_audio_decode.c ffmpeg_audio_test.c $(LDFLAGS) -o audio_test 
+audio_test: ffmpeg_audio_decode.c ffmpeg_audio_test.c circular_buffer.c
+	$(CC) $(CFLAGS) ffmpeg_audio_decode.c ffmpeg_audio_test.c circular_buffer.c $(LDFLAGS) -o audio_test
 
 video_test: ffmpeg_video_decode.c ffmpeg_video_test.c
 	$(CC) $(CFLAGS) ffmpeg_video_decode.c ffmpeg_video_test.c $(LDFLAGS) -o video_test 
