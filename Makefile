@@ -1,7 +1,7 @@
 HOME = /home/albert
 
 # unmark below line to enable render by tinyalsa
-#RENDER_BY_TINYALSA = 1
+RENDER_BY_TINYALSA = 1
 
 CROSS_COMPILE = 
 CC = $(CROSS_COMPILE)gcc
@@ -24,14 +24,17 @@ endif
 
 
 
-all: audio_test video_test
+all: audio_test video_test music_render
 
 audio_test: ffmpeg_audio_decode.c ffmpeg_audio_test.c circular_buffer.c
 	$(CC) $(CFLAGS) ffmpeg_audio_decode.c ffmpeg_audio_test.c circular_buffer.c $(LDFLAGS) -o audio_test
 
+music_render: music_render.c music_render.h
+	$(CC) $(CFLAGS) music_render.c $(LDFLAGS) -o music_render
+	
 video_test: ffmpeg_video_decode.c ffmpeg_video_test.c
 	$(CC) $(CFLAGS) ffmpeg_video_decode.c ffmpeg_video_test.c $(LDFLAGS) -o video_test 
 	
 clean:
-	rm -rf video_test audio_test
+	rm -rf video_test audio_test music_render
 	rm -rf output.pcm output.yuv
